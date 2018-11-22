@@ -1,95 +1,50 @@
-import Hapi from 'hapi';
-import Knex from '../knex';
+'use strict';
 
-const people = {
-  // our "users database"
-  1: {
-    id: 1,
-    name: 'Jen Jones'
+const Bcrypt = require('bcrypt');
+const Hapi = require('hapi');
+
+const users = {
+  john: {
+    username: 'john',
+    password: '$2a$10$iqJSHD.BGr0E2IxQwYgJmeP3NvhPrXAeLSaGCj6IR/XU5QtjVu5Tm', // 'secret'
+    name: 'John Doe',
+    id: '2133d32a'
   }
 };
 
-// bring your own validation function
-const validate = async function(decoded, request) {
-  // do your checks to see if the person is valid
-  if (!people[decoded.id]) {
-    return { isValid: false };
-  } else {
-    return { isValid: true };
+const validate = async (request, username, password) => {
+  const user = users[username];
+  if (!user) {
+    return { credentials: null, isValid: false };
   }
+
+  const isValid = await Bcrypt.compare(password, user.password);
+  const credentials = { id: user.id, name: user.name };
+
+  return { isValid, credentials };
 };
 
-const init = async () => {
-  const server = new Hapi.Server({ port: 8000 });
-  // await server.register(require('hapi-auth-jwt2'));
+const start = async () => {
+  const server = Hapi.server({ port: 4000 });
 
-  // server.auth.strategy('jwt', 'jwt', {
-  //   key: 'NeverShareYourSecret', // Never Share your secret key
-  //   validate, // validate function defined above
-  //   verifyOptions: { algorithms: ['HS256'] } // pick a strong algorithm
-  // });
+  await server.register(require('hapi-auth-basic'));
 
-  // server.auth.default('jwt');
+  server.auth.strategy('simple', 'basic', { validate });
 
   server.route({
-    path: '/birds',
     method: 'GET',
-    handler: (request, reply) => {
-      const getOperation = Knex('birds')
-        .where({
-          isPublic: true
-        })
-        .select('name', 'species', 'picture_url')
-        .then((results) => {
-          if (!results || results.length === 0) {
-            reply({
-              error: true,
-              errMessage: 'no public bird found'
-            });
-          }
-
-          reply({
-            dataCount: results.length,
-            data: results
-          });
-        })
-        .catch((err) => {
-          console.log(err);
-          reply('server-side error');
-        });
+    path: '/',
+    options: {
+      auth: 'simple'
+    },
+    handler: function(request, h) {
+      return 'welcome';
     }
   });
 
-  // server.route([
-  //   {
-  //     method: 'GET',
-  //     path: '/',
-  //     config: { auth: false },
-  //     handler: function(request, reply) {
-  //       return { text: 'Token not required' };
-  //     }
-  //   },
-
-  //   {
-  //     method: 'GET',
-  //     path: '/restricted',
-  //     config: { auth: 'jwt' },
-  //     handler: function(request, reply) {
-  //       reply({ text: 'You used a Token!' }).header(
-  //         'Authorization',
-  //         request.headers.authorization
-  //       );
-  //     }
-  //   }
-  // ]);
   await server.start();
-  return server;
+
+  console.log('server running at: ' + server.info.uri);
 };
 
-init()
-  .then((server) => {
-    console.log('Server running at:', server.info.uri);
-  })
-  .catch((error) => {
-    console.log(error);
-  });
+start();
